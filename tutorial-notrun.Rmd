@@ -1,0 +1,887 @@
+---
+title: "show"
+author: "Mei Huang, 300504502"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Tutorial 5
+```{r eval=FALSE}
+set.seed(123)
+x <- runif(10,0,10)
+e <- rnorm(10)
+y = 5+ 2*x + e
+train<- data.frame(x,y)
+
+set.seed(0)
+x <- runif(10,0,10)
+e <- rnorm(10)
+y = 5+ 2*x + e
+test<- data.frame(x,y)
+
+trained_mod <- lm(y ~ x, data= train)
+beta_hat=coef(trained_mod)
+
+X_train = model.matrix(y ~ x, data = train)
+y_hat_train = X_train %*% beta_hat
+predict(trained_mod, newdata=train)
+
+#train MSE
+trainMSE=mean((train$y-y_hat_train)^2)
+trainMSE
+
+X_test = model.matrix(y ~ x, data = test)
+y_hat_test=X_test%*%beta_hat
+#get y_hat_test from predit
+predict(trained_mod, newdata=test)
+
+test_MES<-mean((test$y-y_hat_test)^2)
+test_MES
+```
+
+subset selection
+```{r eval=FALSE}
+Credit<-read.csv("Credit.csv",header=T)
+Credit<-Credit[ , -1] 
+
+library(leaps)
+regfit.full=regsubsets(Balance~.,Credit)
+reg.summary=summary(regfit.full) 
+
+par(mfrow=c(1,1))
+plot(reg.summary$rss,xlab="Number of Variables",ylab="RSS",type="l")
+plot(reg.summary$adjr2,xlab="Number of Variables",ylab="Adjusted RSq",type="l")
+plot(reg.summary$cp,xlab="Number of Variables",ylab="Cp",type="l")
+plot(reg.summary$bic,xlab="Number of Variables",ylab="BIC",type="l")
+
+which.min(reg.summary$cp)
+coef(regfit.full,6)
+```
+
+
+tutorial 6
+```{r eval=FALSE}
+library(ISLR)
+head(Auto) 
+#give number of observations in auto
+length(Auto$mpg) 
+
+#sample split
+set.seed(1)
+train_index <- sample(392, 392*0.8)
+train = Auto[train_index,] #Training data
+test = Auto[-train_index,] #test data
+
+#data view
+library(ggplot2)
+ggplot(train, aes(x=horsepower, y=mpg)) + geom_point()
+
+lm.fit <- lm(mpg ~ horsepower, data = train)
+#get y_hat
+mpg_hat=predict(lm.fit, test) 
+#test MSE
+mse <- mean((test$mpg - mpg_hat)^2)
+```
+
+k-fold cv, choose polynomial degree
+```{r eval=FALSE}
+library(boot)
+glm.fit <- glm(mpg ~ horsepower, data = Auto)
+#delta is test MSE
+cv.error <- cv.glm(Auto, glm.fit, K=10)$delta[1]
+cv.error
+
+#2nd degree
+glm.fit <- glm(mpg ~ poly(horsepower, 2), data = Auto)
+cv.error <- cv.glm(Auto, glm.fit, K=10)$delta[1]
+
+```
+
+Bootstrap
+```{r eval=FALSE}
+library(boot)
+#index would be generated 1000 times automatically by boot
+boot.fn2 <- function(data, index){
+# Fit the linear model with a subset corresponding to the index set and return coefficients
+return(coef(lm(mpg ~ poly(horsepower, 2), data = data, subset = index)))
+}
+# use all data to get get beta_hat
+boot.fn2(Auto, 1:392)
+
+#random sample of index
+index<-sample(392, 292, replace = T)
+boot.fn2(Auto, index)
+#random sample of index
+index<-sample(392, 292, replace = T)
+boot.fn2(Auto, index)
+
+#the boot function, can repeat the above estimates and calculate SE of the estimates
+boot(Auto, boot.fn2, 1000)
+#give mean of 1000 beta_hat and the sd of the beta_hat(std.error)
+#the difference of sd from lm function and boot is different, the reason the the lm assumption not met perfectly.
+```
+
+
+tutorial 7
+```{r eval=FALSE}
+library(glmnet)
+library(ISLR)
+head(Credit)
+
+x=model.matrix(Balance~.,Credit)[,c(-1,-2)]
+y=Credit$Balance
+
+#fit Ridge regression (alpha=0) at each value on ‘grid’ which is given by default, then plot the
+#Regularization paths.
+ridge.mod=glmnet(x,y,alpha=0)
+plot(ridge.mod, xvar = "lambda", label = TRUE)
+
+predict(ridge.mod,s=exp(1),type="coefficients")
+predict(ridge.mod,s=exp(2),type="coefficients")
+predict(ridge.mod,s=exp(3),type="coefficients")
+#least square estimete(lambda =0)
+predict(ridge.mod,s=0,type="coefficients")
+
+
+#ridge with cv
+cv.out=cv.glmnet(x,y,alpha=0)
+#create plot of the test MSE vs log(lambda)
+plot(cv.out)
+bestlam=cv.out$lambda.min
+log(bestlam)
+out=glmnet(x,y,alpha=0)
+predict(out,type="coefficients",s=bestlam)
+
+#1 se rule
+lam1se=cv.out$lambda.1se
+log(lam1se)
+predict(out,type="coefficients",s=lam1se)
+
+
+#use new grid to expand the range of plot
+grid=10^seq(10,-2,length=100) 
+cv.out=cv.glmnet(x,y,alpha=0, lambda= grid)
+plot(cv.out)
+bestlam=cv.out$lambda.min
+out=glmnet(x,y,alpha=0)
+predict(out,type="coefficients",s=bestlam)
+```
+
+LASSO
+```{r eval=FALSE}
+#fit mod in default grid
+lasso.mod=glmnet(x,y,alpha=1)
+plot(lasso.mod, xvar = "lambda", label = TRUE)
+
+cv.out=cv.glmnet(x,y,alpha=1)
+plot(cv.out)
+bestlam=cv.out$lambda.min
+out=glmnet(x,y,alpha=1)
+predict(out,type="coefficients",s=bestlam)
+
+```
+
+tutorial 8 --Non-linear model
+```{r eval=FALSE}
+library(ISLR2)
+summary(Wage)
+#plot of wage vs age
+plot(Wage$wage, Wage$age)
+
+#fit defferent degree
+fit1 <- lm(wage ~ age, data=Wage)
+fit2 <- lm(wage ~ poly(age, df=2), data=Wage)
+fit3 <- lm(wage ~ poly(age, df=3), data=Wage)
+fit4 <- lm(wage ~ poly(age, df=4), data=Wage)
+fit5 <- lm(wage ~ poly(age, df=5), data=Wage)
+
+#compare models
+anova(fit1,fit2,fit3,fit4,fit5)
+
+```
+Model 1 vs Model 2: p-value is < 2.2e-16. Model 2 is significantly better fit than Model 1.
+
+Model 2 vs Model 3: p-value is 0.001679. Model 3 is significantly better fit than Model 2.
+
+Model 3 vs Model 4: p-value is 0.051046. Model 4 is better fit than Model 3 (significance is not strong).
+
+Model 4 vs Model 5: p-value is 0.369682. Model 5 is not better fit than Model 4.
+
+The polynomial regression of the degree 4 is the best model.
+
+
+```{r eval=FALSE}
+#use AIC/BIC to choose the best model, choose smallest AIC/BIC
+AIC(fit1,fit2,fit3,fit4,fit5)
+BIC(fit1,fit2,fit3,fit4,fit5)
+```
+
+
+```{r eval=FALSE}
+X <- model.matrix(wage ~ poly(age, df=4), data=Wage)
+y <- Wage$wage
+#LSE estimate of beta_hat
+beta_hat <- solve(t(X)%*%X) %*% t(X) %*% y
+y_hat = X %*% beta_hat
+MSE = mean((y-y_hat)^2)
+
+#get same beta_hat from lm model
+summary(fit4)
+
+```
+
+GAM
+```{r eval=FALSE}
+library(splines)
+model1 <- lm(wage ~ ns(age, 5) + education, data = Wage)
+model2 <- lm(wage ~ year + ns(age, 5) + education, data = Wage)
+model3 <- lm(wage ~ ns(year, 4) + ns(age, 5) + education, data = Wage)
+
+#use anova to comare model
+anova(model1, model2, model3)
+#The p-value for model 1 vs model 2 is significant. However, the p-value for model 2 vs model 3 is not
+#significant. From this model 2 is the best model.
+
+#use AIC for best model
+AIC(model1, model2, model3)
+#From the AIC values, model 2 is the best model.lowest AIC value
+
+#use test MSE to choose best model
+set.seed(1)
+train = sample(1:3000, 2000)
+Wage.train <- Wage[train, ]
+Wage.test <- Wage[-train, ]
+
+y <- Wage.test$wage
+y_hat1 <- predict(model1, newdata=Wage.test)
+y_hat2 <- predict(model2, newdata=Wage.test)
+y_hat3 <- predict(model3, newdata=Wage.test)
+
+mse1 <- mean((y-y_hat1)^2)
+mse2 <- mean((y-y_hat2)^2)
+mse3 <- mean((y-y_hat3)^2)
+#The best model is Model 3. Since the test MSE are close between Model 2 and Model 3, we may need cross
+#validation to get more accurate the test MSE.
+
+```
+
+Tutorial 9
+Inference for Binary Responses: Logistic Regression Models, Wald Tests, 
+
+Odds Ratios and Confidence Intervals, and Predicted Values
+```{r eval=FALSE}
+library(readxl)
+titanic <- read_xlsx("Titanic.xlsx", sheet = "Data")
+titanic.complete.cases <- subset(titanic, subset = !is.na(EMBARKED))
+
+library(pander)
+logistic.reg.model <- glm(SURVIVED ~ AGE + factor(SEX) + factor (PCLASS) + factor(EMBARKED), family
+= "binomial", data = titanic.complete.cases)
+pander(summary(logistic.reg.model))
+
+#to assess collinearity of predictors
+library(car)
+pander(vif(logistic.reg.model))
+```
+the the estimated logistic regression equation is:
+
+$log(\hat p/(1-\hat p))\approx -0.06665-0.02835X_1+1.81006X_2-0.62282X_{32}-1.56473X_{33}+0.08713X_{41}-0.13136X_{42}$
+
+Wald test
+
+A test of:
+
+$H_0: \beta_1 = 0$
+$H_1: \beta_1\ne 0$
+
+produce a test statistic of 
+
+$z = \hat\beta/SE(\hat\beta) \approx -0.02835/0.00605\approx -4.6895$
+
+Corresponding p-value of 
+
+$p-value = 2\times P(Z> |-4.6895|) \approx 2.739\times 10^{-6}$
+
+As the p-value is much smaller than any reasonable significance level $\alpha$ (e.g., $\alpha$ = 0.05, 0.01), we have sufficient evidence to suggest that $\beta_1$ is significantly different from 0, and there is a statistically significant relationship between age of the passenger and survival, adjusting for sex of the passenger, class of the ticket, and port of embarkation. In particular, the fact that the estimate for $\beta_1$ is negative indicates that the probability (as well as odds) of survival decreases with increased age after adjusting for sex of the passenger, class of the ticket, and port of embarkation.
+
+To interpret the “effects” corresponding to the coefficient for AGE and the coefficients for CLASS, we must exponentiate the estimated coefficients:
+
+$\hat\beta_1 \approx-0.02835$
+
+then:$exp(\hat\beta_1)\approx0.972$
+
+The corresponding confidence interval:
+
+$\hat\beta_1\pm z_{1-\alpha/2}\times SE(\hat\beta_1) \approx -0.02835\pm 1.96\times 0.00605$
+
+which is (-0.0402, -0.0165)
+
+the corresponding confidence interval for the effects should be 
+(exp(-0.0402), exp(-0.0165)) which get the result of (0.9606, 0.9836)
+
+Interpreting:An increase in age by one year is associated with an estimated multiplicative change of 0.972 (95% CI: (0.9606, 0.9836)) in the odds of 
+survival on the Titanic, adjusting for sex of the passenger, class of the ticket, and port of embarkation.
+
+```{r eval=FALSE}
+#confidence interval using R
+pander(exp(confint.default(logistic.reg.model, parm = c("AGE", "factor(PCLASS)2", "factor(PCLASS)3"))))
+
+```
+
+```{r eval=FALSE}
+#predict on new data
+new.data <- data.frame(AGE = c(24, 24), SEX = c(1, 0), PCLASS = c(2, 2), EMBARKED = c(2, 2))
+# Predicted values for the log-odds of "success".
+predict(logistic.reg.model, newdata = new.data)
+# Predicted values for the probability of "success".
+predict(logistic.reg.model, newdata = new.data, type = "response")
+```
+This means that a 24-year-old female who was a second-class passenger and embarked at Southampton is estimated to have had a probability of survival of 
+approximately 0.5766, whereas a male of the same age with the same class of ticket and port of embarkation is estimated to have had a probability of survival of approximately 0.1822.
+
+```{r eval=FALSE}
+#get CI for the effects
+pander(exp(confint.default(logistic.reg.model, parm = c("factor(SEX)1"))))
+```
+
+
+Tutorial 10
+
+Inference for Binary Responses: Model Comparisons, Goodness-of-Fit Tests,
+
+Model Selection Algorithms, and Advanced Modelling
+```{r eval=FALSE}
+library(lmtest)
+# Fit the logistic regression model using the glm() function.
+logistic.reg.model <- glm(SURVIVED ~ AGE + factor(SEX) + factor (PCLASS) + factor(EMBARKED), family
+= "binomial", data = titanic.complete.cases)
+# Fit the logistic regression model that excludes EMBARKED as a predictor.
+logistic.reg.model.reduced <- glm(SURVIVED ~ AGE + factor(SEX) + factor (PCLASS), family =
+"binomial", data = titanic.complete.cases)
+
+#carry out likelihood ratio test to compare full model and reduced model
+library(pander)
+pander(lrtest(logistic.reg.model.reduced, logistic.reg.model), caption = "")
+
+```
+test:
+$H_0: \beta_5 =\beta_6 =0$
+
+$H_1: \beta_5\ne 0or\beta_6\ne 0$
+
+the test statistic:
+
+$G^2\approx 1.0822$
+
+whichi follows an asymptotic$\chi^2_2$ distribution under $H_0$, the p-value is:
+
+$p-value\approx P(\chi^2_2 >1.0822)\approx 0.5821$
+which is much larger than any reasonable significance level (e.g., $\alpha$ = 0.01, 0.05, or 0.10), meaning that we have insufficient evidence to conclude that either $\beta_5$ or $\beta_6$ are significantly different from 0. This meansthat the inclusion of EMBARKED as a predictor does not lead to a significantly better fit after accounting for the other predictors in the model.
+
+```{r eval=FALSE}
+#This provides outputs of likelihood ratio tests comparing the full model with 
+#models excluding each of the individual predictors.
+anova(logistic.reg.model, test = "LRT")
+```
+
+
+```{r eval=FALSE}
+#Hosmer-Lemeshow tests for g = 10, 20, and 30
+library(ResourceSelection)
+
+# Carry out a Hoslem-Lemeshow test for g = 5, 10, and 20 groups.
+pander(hoslem.test(titanic.complete.cases$SURVIVED, logistic.reg.model$fitted.values, g = 10))
+pander(hoslem.test(titanic.complete.cases$SURVIVED, logistic.reg.model$fitted.values, g = 20))
+pander(hoslem.test(titanic.complete.cases$SURVIVED, logistic.reg.model$fitted.values, g = 30))
+```
+
+```{r eval=FALSE}
+#stepwise
+# Load the "MASS" package to make use of the stepAIC() function.
+library(MASS)
+#forward
+forward.selection.survival <- stepAIC(glm(SURVIVED ~ 1, family = "binomial", 
+                                          data =titanic.complete.cases), 
+                                      scope = list(upper = ~AGE + FARE + 
+                                                     factor(SEX) + 
+                                                     SIBSP + PARCH + 
+                                                     factor(PCLASS) + 
+                                                     factor(EMBARKED), 
+                                                   lower = ~1), 
+                                      direction = "forward", trace = FALSE)
+# Output the steps 
+pander(forward.selection.survival$anova)
+
+# backward
+backward.selection.survival <- stepAIC(glm(SURVIVED ~ AGE + 
+                                             FARE + 
+                                             factor(SEX) + 
+                                             SIBSP + 
+                                             PARCH +
+                                             factor (PCLASS) + 
+                                             factor(EMBARKED), 
+                                           family = "binomial", 
+                                           data = titanic.complete.cases), 
+                                       scope =list(upper = ~AGE + FARE + 
+                                                     factor(SEX) + SIBSP +
+                                                     PARCH + factor (PCLASS) + 
+                                                     factor(EMBARKED), 
+                                                   lower= ~1), 
+                                       direction = "backward", trace = FALSE)
+# Output the steps 
+pander(backward.selection.survival$anova)
+
+#bestglm
+library(bestglm)
+
+# The structure of this data frame is rigid with predictors first and the 
+#response being placed in the last column.
+# Note that the response variable MUST be named 'y' in the data frame.
+predictors.for.bestglm <- data.frame(AGE = titanic.complete.cases$AGE, 
+                                     FARE = titanic.complete.cases$FARE, 
+                                     SEX = as.factor(titanic.complete.cases$SEX),
+                                     SIBSP = titanic.complete.cases$SIBSP, 
+                                     PARCH = titanic.complete.cases$PARCH, 
+                                     PCLASS =as.factor(titanic.complete.cases$PCLASS),
+                                     EMBARKED = as.factor(titanic.complete.cases$EMBARKED), 
+                                     y =titanic.complete.cases$SURVIVED)
+
+# Find the best logistic regression model based on the AIC.
+best.logistic.AIC <- bestglm(Xy = predictors.for.bestglm, 
+                             family = binomial, 
+                             IC = "AIC", 
+                             method = "exhaustive")
+## Show the top five models in terms of minimising AIC.
+pander(best.logistic.AIC$BestModels)
+
+# Find the best logistic regression model based on BIC.
+best.logistic.BIC <- bestglm(Xy = predictors.for.bestglm, 
+                             family = binomial, 
+                             IC = "BIC", 
+                             method = "exhaustive")
+## Show the top five models in terms of minimising BIC.
+pander(best.logistic.BIC$BestModels)
+
+
+#forward selection for a model that includes polynomial terms up to cubic.
+forward.selection.best.model.poly.1 <- stepAIC(glm(SURVIVED ~ 1, 
+                                                   family = "binomial", 
+                                                   data =titanic.complete.cases), 
+                                               scope = list(upper = 
+                                                              ~poly(AGE, 3) + 
+                                                              factor(SEX) + 
+                                                              poly(SIBSP, 3) + 
+                                                              factor(PCLASS), 
+                                                            lower = ~1), 
+                                               direction = "forward", 
+                                               trace = FALSE)
+# Output the steps
+pander(forward.selection.best.model.poly.1$anova)
+
+#another way
+#  forward selection for all predictors and polynomial terms up to cubic.
+forward.selection.best.model.poly.2 <- stepAIC(glm(SURVIVED ~ 1, 
+                                                   family = "binomial", 
+                                                   data =titanic.complete.cases), 
+                                               scope = list(upper = ~I(AGE - mean(AGE)) + 
+                                                              I((AGE - mean(AGE)) ^ 2) +
+                                                              I((AGE - mean(AGE)) ^ 3) + 
+                                                              factor(SEX) + 
+                                                              I(SIBSP - mean(SIBSP)) + 
+                                                              I((SIBSP - mean(SIBSP)) ^ 2) +
+                                                              I((SIBSP - mean(SIBSP)) ^ 3) + 
+                                                              factor (PCLASS), lower = ~1), 
+                                               direction = "forward", 
+                                               trace = FALSE)
+# Output the steps 
+pander(forward.selection.best.model.poly.2$anova)
+```
+Neither of the linear terms for these numeric predictors are selected in spite of the centering on 0 that we had performed, suggesting that the non-linear terms are much more important than the linear terms. If including linear terms in a model to assist with interpretability, we would include terms up to degree 3 for AGE but terms only up to degree 2 for SIBSP. If simply looking for the best fitting model, then these linear terms would not be included.
+
+```{r eval=FALSE}
+# Load the "mgcv" to make use of the gam(), s(), and te() functions.
+library(mgcv)
+
+# Fit a GAM for INFARCTS on SBP, STROKE, PACK_YEARS, ALCOHOL, and a SBP-AGE 
+#interaction with smoothers for all numeric predictors.
+titanic.gam <- gam(SURVIVED ~ s(AGE) + factor(SEX) + s(SIBSP, k = 5) + 
+                     factor(PCLASS), 
+                   data =titanic.complete.cases, 
+                   family = "binomial", 
+                   method = "REML")
+#summary for factors
+pander(summary(titanic.gam)$p.table)
+#summary for numeric predictors
+pander(summary(titanic.gam)$s.table)
+```
+
+
+Tutorial 11
+
+```{r eval=FALSE}
+names(titanic)
+# Specify the indices of the variables to be considered
+variable.indices <- 2 : 8
+
+# Produce a matrix that represents all possible combinations of variables.
+# Remove the first row, which is the null model (i.e., no predictors).
+all.comb <- expand.grid(as.data.frame(matrix(rep(0 : 1, length(variable.indices)), nrow = 2)))[-1, ]
+
+
+#######################################
+## Define functions for the costs    ##
+## corresponding to the error rate   ##
+## and the area under the ROC curve. ##
+#######################################
+
+total.error.rate <- function(r, p)
+{
+        mean(r != as.numeric(p > 0.5))
+}
+
+area.under.curve <- function(r, p = 0)
+{
+        require(ROCR)
+
+        pred <- prediction(p, r)
+        auc <- performance(pred, measure = "auc")
+        auc@y.values[[1]]
+}
+
+# Overwrite variables that are factors but are currently stored as numeric.
+titanic.complete.cases$SEX <- as.factor(titanic.complete.cases$SEX)
+titanic.complete.cases$PCLASS <- as.factor(titanic.complete.cases$PCLASS)
+titanic.complete.cases$EMBARKED <- as.factor(titanic.complete.cases$EMBARKED)
+
+# Again view the variable types for variables in the titanic dataset.
+str(titanic.complete.cases)
+
+# Load the "doParallel" package to allow for parallel processing.
+library(doParallel)
+# Load the "foreach" package to allow for splitting loops.
+library(foreach)
+# Load the "boot" package to make use of the cv.glm() function .
+library(boot)
+# Set random number generator seed for replicability of results.
+set.seed(1)
+
+# Specify the number of repetitions of ten-fold cross-validation to carry out.
+nrep <- 20
+
+# Fire up 75% of cores for parallel processing.
+nclust <- makeCluster(detectCores() * 0.75)
+registerDoParallel(nclust)
+
+######################
+## Total error rate ##
+######################
+
+# Use "foreach" to tap into parallel computing to calculate the total error rate.
+error.rate.parallel <- foreach(i = 1 : nrep, .combine = "rbind", .packages = "boot") %:%
+foreach(j = 1 : nrow(all.comb), .combine = "c") %dopar%
+{
+logistic.regression.model <- glm(as.formula(paste("SURVIVED ~",
+paste(names(titanic.complete.cases)[variable.indices[all.comb[j,] == 1]], collapse = " + "))), data
+= titanic.complete.cases, family = "binomial")
+return(cv.glm(titanic.complete.cases, logistic.regression.model, cost = total.error.rate, K =
+10)$delta[1])
+}
+
+##############################
+## Area under the ROC curve ##
+##############################
+
+AUC.parallel <- foreach(i = 1 : nrep, .combine = "rbind", .packages = "boot") %:%
+foreach(j = 1 : nrow(all.comb), .combine = "c") %dopar%
+{
+logistic.regression.model <- glm(as.formula(paste("SURVIVED ~",
+paste(names(titanic.complete.cases)[variable.indices[all.comb[j,] == 1]], collapse = " + "))), data
+= titanic.complete.cases, family = "binomial")
+return(cv.glm(titanic.complete.cases, logistic.regression.model, cost = area.under.curve, K =
+10)$delta[1])
+}
+
+# Shut down cores.
+stopCluster(nclust)
+
+
+######################
+## Total error rate ##
+######################
+
+# View error rates according to model.
+boxplot(error.rate.parallel ~ matrix(rep(1 : nrow(all.comb), each = nrep), nrow = nrep), xlab =
+"Model", ylab = "Error rate")
+
+# View all models within one SE of the best model.
+best.models.error.rate <- (1 : nrow(all.comb))[apply(error.rate.parallel, 2, mean) <=
+min(apply(error.rate.parallel, 2, mean) + apply(error.rate.parallel, 2, sd))]
+
+for(i in 1 : length(best.models.error.rate))
+{
+cat(paste("Model ", i, ":\n"))
+print(names(titanic.complete.cases)[variable.indices[all.comb[best.models.error.rate[i], ] == 1]])
+# Variable names
+print(apply(error.rate.parallel, 2, mean)[best.models.error.rate[i]]) # Error rate
+
+cat("\n")
+}
+
+##############################
+## Area under the ROC curve ##
+##############################
+
+# View AUC according to model.
+boxplot(AUC.parallel ~ matrix(rep(1 : nrow(all.comb), each = nrep), nrow = nrep), xlab = "Model",
+ylab = "AUC")
+
+# View all models within one SE of the best model.
+best.models.AUC <- (1 : nrow(all.comb))[apply(AUC.parallel, 2, mean) >= max(apply(AUC.parallel, 2,
+mean) - apply(AUC.parallel, 2, sd))]
+
+for(i in 1 : length(best.models.AUC))
+{
+cat(paste("Model ", i, ":\n"))
+print(names(titanic.complete.cases)[variable.indices[all.comb[best.models.AUC[i], ] == 1]]) 
+#Variable names
+print(apply(AUC.parallel, 2, mean)[best.models.AUC[i]]) # AUC
+cat("\n")
+}
+
+
+```
+
+
+Tutorial 12
+```{r eval=FALSE}
+wine <- read.csv("Wine.csv")
+# Construct a matrix in which to store group centroids.  (Rows are groups.)
+centroid <- matrix(NA, nrow = length(unique(wine$CULTIVAR)), ncol = ncol(wine) - 1)
+
+for(i in 1 : length(unique(wine$CULTIVAR)))
+  {
+  
+# Extract the predictor values for the ith cultivar.  CULTIVAR is stored in the first column, so eliminate that.
+   predictors.by.Y <- as.matrix(wine[wine$CULTIVAR == sort(unique(wine$CULTIVAR))[i], -1])
+# Calculate the centroid for the ith cultivar.
+   centroid[i, ] <- colMeans(predictors.by.Y)
+   n <- nrow(predictors.by.Y) # Sample size for ith cultivar.
+   k <- ncol(predictors.by.Y) # Number of predictors.
+# Calculate the covariance matrix for the ith cultivar.
+   cov.by.Y <- cov(predictors.by.Y)
+# Calculate squared Mahalanobis distances from points to the group centroid.
+   mahal.dist <- mahalanobis(predictors.by.Y, centroid[i, ], cov.by.Y)
+# Produce a Q-Q plot of squared Mahalanobis distances, which follow a chi-square distribution with p degrees of freedom.
+   qqplot(qchisq(ppoints(n), df = k), mahal.dist, 
+          main = paste("Q-Q Plot (Y = ",  
+                      sort(unique(wine$CULTIVAR))[i], ")", 
+                      sep =""), 
+          xlab = "Chi-square quantiles", 
+          ylab = "Squared Mahalanobis distance")
+   abline(a = 0, b = 1)
+}
+
+
+# Load the "biotools" add-on package.
+library(biotools)
+# Test homogeneity of covariance matrices.
+predictors <- wine[, -1]
+library(pander)
+pander(boxM(predictors, wine$CULTIVAR))
+
+
+library(MASS)
+# Carry out a LDA of wine cultivar on all chemical and spectral measurement variables.
+wine.lda <- lda(CULTIVAR ~ ., data = wine)
+wine.lda
+
+# Visualise the separation acheived by each discriminant function.
+ldahist(predict(wine.lda)$x[, 1], g = wine$CULTIVAR) # First discriminant function
+ldahist(predict(wine.lda)$x[, 2], g = wine$CULTIVAR) # Second discriminant function
+plot(wine.lda)
+
+
+# Carry out a QDA f wine cultivar on all chemical and spectral measurement variables.
+wine.qda <- qda(CULTIVAR ~ ., data = wine)
+wine.qda
+
+
+
+library(parallel)
+library(doParallel)
+library(foreach)
+library(ROCR)
+
+########################################
+## Perform an exhaustive model search ##
+## for all possible subsets of the    ##
+## variables specified.               ##
+########################################
+
+wine.reduced <- wine[wine$CULTIVAR != 3, ]
+
+# Specify the indices of the variables to be considered in predictive models for predicting wine cultivar.
+variable.indices <- 2 : 10
+
+# Produce a matrix that represents all possible combinations of variables.  Remove the first row, which is the null model.
+all.comb <- expand.grid(as.data.frame(matrix(rep(0 : 1, length(variable.indices)), nrow = 2)))[-1, ]
+
+# Fire up 75% of cores for parallel processing.
+nclust <- makeCluster(detectCores() * 0.75)
+registerDoParallel(nclust)
+
+# Set random number generator seed for replicability of results.
+set.seed(0)
+
+######################
+## Total error rate ##
+######################
+
+# Use "foreach" to tap into parallel computing to calculate the total error rate using LDA and LOOCV.
+error.rate.parallel.LDA <- foreach(i = 1 : nrow(all.comb), .combine = "c", .packages = "MASS") %dopar%
+        {
+            LDA.model <- lda(as.formula(paste("CULTIVAR ~", 
+                                              paste(names(wine.reduced)[variable.indices[all.comb[i, ] == 1]], 
+                                                    collapse = " + "))), 
+                             data = wine.reduced, CV = TRUE)
+            return(mean(LDA.model$class != wine.reduced$CULTIVAR))
+        }
+
+# Use "foreach" to tap into parallel computing to calculate the total error rate using QDA and LOOCV.
+error.rate.parallel.QDA <- foreach(i = 1 : nrow(all.comb), .combine = "c", .packages = "MASS") %dopar%
+        {
+            QDA.model <- qda(as.formula(paste("CULTIVAR ~", paste(names(wine.reduced)[variable.indices[all.comb[i, ] == 1]], collapse = " + "))), data = wine.reduced, CV = TRUE)
+            return(mean(QDA.model$class != wine.reduced$CULTIVAR))
+        }
+
+##############################
+## Area under the ROC curve ##
+##############################
+
+AUC.parallel.LDA <- foreach(i = 1 : nrow(all.comb), .combine = "c", .packages = c("MASS", "ROCR")) %dopar%
+        {
+            LDA.model <- lda(as.formula(paste("CULTIVAR ~", paste(names(wine.reduced)[variable.indices[all.comb[i, ] == 1]], collapse = " + "))), data = wine.reduced, CV = TRUE)
+            pred <- prediction(LDA.model$posterior[, 2], wine.reduced$CULTIVAR)
+            return(performance(pred, measure = "auc")@y.values[[1]])
+        }
+
+AUC.parallel.QDA <- foreach(i = 1 : nrow(all.comb), .combine = "c", .packages = c("MASS", "ROCR")) %dopar%
+        {
+            QDA.model <- qda(as.formula(paste("CULTIVAR ~", paste(names(wine.reduced)[variable.indices[all.comb[i, ] == 1]], collapse = " + "))), data = wine.reduced, CV = TRUE)
+            pred <- prediction(QDA.model$posterior[, 2], wine.reduced$CULTIVAR)
+            return(performance(pred, measure = "auc")@y.values[[1]])
+        }
+
+# Shut down cores.
+stopCluster(nclust)
+
+######################
+## Total error rate ##
+######################
+
+# View the top ten models in terms of test error rate for LDA.
+best.models.error.rate.LDA <- order(error.rate.parallel.LDA)[1 : 10]
+
+# View the top ten models in terms of test error rate for QDA.
+best.models.error.rate.QDA <- order(error.rate.parallel.QDA)[1 : 10]
+
+##############################
+## Area under the ROC curve ##
+##############################
+
+# View the top ten models in terms of AUC for LDA.
+best.models.AUC.LDA <- order(AUC.parallel.LDA, decreasing = TRUE)[1 : 10]
+
+# View the top ten models in terms of AUC for QDA.
+best.models.AUC.QDA <- order(AUC.parallel.QDA, decreasing = TRUE)[1 : 10]
+
+# Standardise all variables
+wine.reduced[, -1] <- scale(wine.reduced[, -1])
+
+# Load the "class" add-on package.
+library(class)
+# Carry out 11-nearest neighbours.
+kNN.model <- knn.cv(train = wine.reduced[, -1], cl = wine.reduced$CULTIVAR, k = 11, prob = TRUE)
+
+# Calculate the test error rate.
+error.rate <- mean(kNN.model != wine.reduced$CULTIVAR)
+error.rate
+
+# Load the "ROCR" add-on package.
+library(ROCR)
+# Produce an ROC curve and calculate AUC.
+prob <- attr(kNN.model, "prob")
+prob <- 2 * ifelse(kNN.model == 1, 1 - prob, prob) - 1
+
+pred <- prediction(prob, wine.reduced$CULTIVAR)
+pred.knn <- performance(pred, measure = "tpr", x.measure = "fpr")
+auc.knn <- performance(pred, measure = "auc")
+auc.knn <- auc.knn@y.values[[1]]
+
+# Plot the ROC curve.
+plot(pred.knn)
+abline(a = 0, b = 1)
+text(x = 0.25, y = 0.65, paste("AUC = ", round(auc.knn, 3), sep = ""))
+
+########################################
+## Perform an exhaustive model search ##
+## for all possible subsets of the    ##
+## variables specified and number of  ##
+## nearest neighbours.                ##
+########################################
+
+# Fire up 75% of cores for parallel processing.
+nclust <- makeCluster(detectCores() * 0.75)
+registerDoParallel(nclust)
+
+# Set random number generator seed for replicability of results.
+set.seed(0)
+
+######################
+## Total error rate ##
+######################
+
+# Specify number of unique odd numbers of nearest neighbours to consider.
+k <- 25
+
+# Use "foreach" to tap into parallel computing to calculate the total error rate using k-NN.
+error.rate.parallel <- foreach(i = 1 : k, .combine = "rbind", .packages = "class") %:%
+        foreach(j = 1 : nrow(all.comb), .combine = "c") %dopar%
+        {
+            kNN.model <- knn.cv(train = scale(wine.reduced[, variable.indices[all.comb[j, ] == 1]]), cl = wine.reduced$CULTIVAR, k = 2 * i - 1)
+            return(mean(kNN.model != wine.reduced$CULTIVAR))
+        }
+
+##############################
+## Area under the ROC curve ##
+##############################
+
+AUC.parallel <- foreach(i = 1 : k, .combine = "rbind", .packages = c("class", "ROCR")) %:%
+        foreach(j = 1 : nrow(all.comb), .combine = "c") %dopar%
+        {
+            kNN.model <- knn.cv(train = scale(wine.reduced[, variable.indices[all.comb[j, ] == 1]]), cl = wine.reduced$CULTIVAR, k = 2 * i - 1, prob = TRUE)
+    prob <- attr(kNN.model, "prob")
+    prob <- 2 * ifelse(kNN.model == 1, 1 - prob, prob) - 1
+
+    pred <- prediction(prob, wine.reduced$CULTIVAR)
+    return(performance(pred, measure = "auc")@y.values[[1]])
+        }
+
+# Shut down cores.
+stopCluster(nclust)
+
+######################
+## Total error rate ##
+######################
+
+# View the top ten models in terms of test error rate.
+best.models.error.rate <- order(error.rate.parallel)[1 : 10]
+
+# Determine the indices for j (model) and i (number of nearest neighbours) for the top ten models.
+j.index <- floor((best.models.error.rate - 1) / k) + 1
+i.index <- best.models.error.rate - (j.index - 1) * k
+```
